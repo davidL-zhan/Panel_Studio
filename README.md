@@ -104,6 +104,8 @@ cd backend && pytest                  # 10 条 API 测试
 
 ## 主要 API 列表
 
+> 完整 API 文档见 [API.md](./API.md)
+
 | 方法 | 端点 | 说明 |
 |------|------|------|
 | `GET` | `/api/discussions` | 列出所有讨论（按创建时间倒序） |
@@ -244,6 +246,4 @@ Panel_Studio/
     ├── ddd/                # 12 份 DDD（设计概要 · 信息架构 · 用户流程 · 状态矩阵 · 布局 · 组件树 · 响应式 · 无障碍）
     ├── tdd/                # 3 份 TDD（技术方案 · 任务拆解 · 测试矩阵）
     ├── spec/               # SDD 交叉一致性审查报告（28 项修复）
-    ├── prompts.md          # 6 段核心 Prompt 记录（SDD/DDD/TDD/E2E 四阶段）
-    └── workflow.md         # 开发工作流说明 + 3 个典型 AI 协同问题
 ```
