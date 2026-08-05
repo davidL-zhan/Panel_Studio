@@ -1,9 +1,22 @@
 <!-- DDD §07-component-architecture.md §1 — 根组件 -->
 <script setup lang="ts">
-// 根组件仅承载 <router-view> + 全局共享组件
-// 后续 DDD-2 将在此挂载 GlobalToast、ConfirmDialog
+import { ref, provide } from 'vue'
+import GlobalToast from '@/components/shared/GlobalToast.vue'
+import { TOAST_KEY } from '@/composables/useToast'
+
+const toastRef = ref<InstanceType<typeof GlobalToast> | null>(null)
+
+function addToast(message: string, variant: 'success' | 'warning' | 'error' | 'info' = 'info') {
+  toastRef.value?.addToast(message, variant)
+}
+function removeToast(id: number) {
+  toastRef.value?.removeToast(id)
+}
+
+provide(TOAST_KEY, { addToast, removeToast })
 </script>
 
 <template>
   <router-view />
+  <GlobalToast ref="toastRef" />
 </template>

@@ -25,10 +25,11 @@ export const useDiscussionStore = defineStore('discussion', () => {
     error.value = null
     try {
       const res = await api.fetchDiscussion(id)
-      discussion.value = res.data
-      panelists.value = res.data.panelists
-      messages.value = res.data.latest_messages
-      consensusPoints.value = res.data.consensus_points
+      const { panelists: _p, latest_messages: _m, consensus_points: _c, ...disc } = res.data
+      discussion.value = disc
+      panelists.value = _p
+      messages.value = _m
+      consensusPoints.value = _c
     } catch (e) {
       error.value = e instanceof Error ? e.message : '加载讨论失败'
     } finally {
