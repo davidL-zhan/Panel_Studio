@@ -1,8 +1,10 @@
 """SDD §04-llm-protocol — DeepSeek API 5 场景 + §05-validation-layer 校验"""
-import json, re
+import json, re, logging
 from httpx import AsyncClient, HTTPStatusError, TimeoutException
 from .config import settings
 from .database import Panelist
+
+logger = logging.getLogger(__name__)
 
 PANELIST_COLORS = [
     "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
@@ -30,7 +32,7 @@ async def _call_deepseek(system: str, user: str, temperature: float = 0.7, json_
     if json_mode:
         body["response_format"] = {"type": "json_object"}
 
-    async with AsyncClient(timeout=30) as client:
+    async with AsyncClient(timeout=30, trust_env=False) as client:
         try:
             resp = await client.post(
                 f"{settings.deepseek_base_url}/chat/completions",
@@ -52,11 +54,16 @@ async def _call_deepseek(system: str, user: str, temperature: float = 0.7, json_
             return {"text": content}
 
         except TimeoutException:
-            raise LLMError("DeepSeek API 超时")
+            raise LLMError("DeepSeek API timeout (30s)")
         except HTTPStatusError as e:
+            try:
+                detail = e.response.json()
+            except Exception:
+                detail = e.response.text
+            logger.error(f"DeepSeek API {e.response.status_code}: {detail}")
             if e.response.status_code == 429:
-                raise LLMError("DeepSeek API 频率限制 (429)")
-            raise LLMError(f"DeepSeek API 错误 {e.response.status_code}")
+                raise LLMError("Service busy, please retry later")
+            raise LLMError(f"LLM service error ({e.response.status_code})")
 
 
 # ═══ 场景 A：嘉宾阵容生成 (§4-llm-protocol §3) ═════

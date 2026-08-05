@@ -11,6 +11,7 @@ export const useWebSocketStore = defineStore('webSocket', () => {
   const reconnectAttempt = ref(0)
 
   let ws: WebSocket | null = null
+  let onEventHandler: ((data: any) => void) | null = null
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -55,6 +56,13 @@ export const useWebSocketStore = defineStore('webSocket', () => {
       startHeartbeat()
     }
 
+    ws.onmessage = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (onEventHandler) onEventHandler(data)
+      } catch { /* ignore parse errors */ }
+    }
+
     ws.onclose = () => {
       stopHeartbeat()
       if (reconnectAttempt.value < WS.maxReconnectAttempts) {
@@ -75,6 +83,12 @@ export const useWebSocketStore = defineStore('webSocket', () => {
         status.value = WsConnectionStatus.CONNECTED
         reconnectAttempt.value = 0
         startHeartbeat()
+      }
+      ws.onmessage = (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data)
+          if (onEventHandler) onEventHandler(data)
+        } catch { /* ignore */ }
       }
       ws.onclose = () => {
         stopHeartbeat()
@@ -102,6 +116,10 @@ export const useWebSocketStore = defineStore('webSocket', () => {
     resetCounters()
   }
 
+  function setEventHandler(handler: (data: any) => void) {
+    onEventHandler = handler
+  }
+
   return {
     status,
     lastSequenceId,
@@ -109,5 +127,6 @@ export const useWebSocketStore = defineStore('webSocket', () => {
     reconnectAttempt,
     connect,
     disconnect,
+    setEventHandler,
   }
 })

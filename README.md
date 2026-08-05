@@ -60,62 +60,64 @@ cd backend && pytest               # 10 条 API 测试
 
 ### 后端（系统环境变量）
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `DEEPSEEK_API_KEY` | DeepSeek API Key（**必填**，仅从环境变量读取） | — |
-| `DEEPSEEK_BASE_URL` | API 地址 | `https://api.deepseek.com/v1` |
-| `DEEPSEEK_MODEL` | 模型 ID | `deepseek-chat` |
-| `DATABASE_URL` | SQLite 数据库路径 | `sqlite+aiosqlite:///./panel_studio.db` |
+| 变量                  | 说明                                                 | 默认值                                    |
+| --------------------- | ---------------------------------------------------- | ----------------------------------------- |
+| `DEEPSEEK_API_KEY`  | DeepSeek API Key（**必填**，仅从环境变量读取） | —                                        |
+| `DEEPSEEK_BASE_URL` | API 地址                                             | `https://api.deepseek.com/v1`           |
+| `DEEPSEEK_MODEL`    | 模型 ID                                              | `deepseek-v4-flash`                     |
+| `DATABASE_URL`      | SQLite 数据库路径                                    | `sqlite+aiosqlite:///./panel_studio.db` |
+
+> `DEEPSEEK_API_KEY` 必须通过系统环境变量设置。其余变量可写入 `.env` 文件，由 `load_dotenv()` 自动加载。
 
 ### 前端（`frontend/.env.development`）
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `VITE_API_BASE` | 后端 REST API 地址 | `http://localhost:8000` |
-| `VITE_WS_BASE` | 后端 WebSocket 地址 | `ws://localhost:8000` |
-| `VITE_MOCK` | Mock 模式（无需后端） | `true` |
+| 变量              | 说明                  | 默认值                    |
+| ----------------- | --------------------- | ------------------------- |
+| `VITE_API_BASE` | 后端 REST API 地址    | `http://localhost:8000` |
+| `VITE_WS_BASE`  | 后端 WebSocket 地址   | `ws://localhost:8000`   |
+| `VITE_MOCK`     | Mock 模式（无需后端） | `true`                  |
 
 ---
 
 ## 技术选型说明
 
-| 层 | 技术 | 选型理由 |
-|----|------|----------|
-| 前端框架 | Vue 3 + Composition API | 组件化 + 响应式 + `<script setup>` 简洁 |
-| 类型系统 | TypeScript 5.5 strict | WS 事件判别联合、API DTO 编译期校验 |
-| 构建工具 | Vite 5 | HMR 极快开发反馈 |
-| 状态管理 | Pinia 2 | Vue 3 官方推荐，组合式 API 风格 |
-| HTTP 客户端 | Axios | 拦截器统一错误分类（422/409/502 等） |
-| 图标 | Lucide Vue Next | 轻量 SVG 图标，Tree-shakeable |
-| 后端框架 | FastAPI | 异步原生支持 + Pydantic v2 自动校验 + 自动 OpenAPI 文档 |
-| ORM | SQLAlchemy 2.0 async | 异步引擎 + WAL 模式并发写入 |
-| 数据库 | SQLite | 作业要求，零配置，本地文件存储 |
-| 大模型 | DeepSeek V4 Pro | 作业要求，`deepseek-chat` 模型 |
-| 实时通信 | WebSocket | 原生支持，双向事件流 |
-| 样式方案 | CSS Variables | Design Token 体系，零运行时开销 |
-| 单元/组件测试 | Vitest + Vue Test Utils + happy-dom | Vite 原生集成，速度快 |
-| E2E 测试 | Playwright | Chromium headless，Mock 模式运行 |
-| 后端测试 | pytest + httpx | ASGITransport 内存测试，不走网络 |
+| 层            | 技术                                | 选型理由                                                |
+| ------------- | ----------------------------------- | ------------------------------------------------------- |
+| 前端框架      | Vue 3 + Composition API             | 组件化 + 响应式 +`<script setup>` 简洁                |
+| 类型系统      | TypeScript 5.5 strict               | WS 事件判别联合、API DTO 编译期校验                     |
+| 构建工具      | Vite 5                              | HMR 极快开发反馈                                        |
+| 状态管理      | Pinia 2                             | Vue 3 官方推荐，组合式 API 风格                         |
+| HTTP 客户端   | Axios                               | 拦截器统一错误分类（422/409/502 等）                    |
+| 图标          | Lucide Vue Next                     | 轻量 SVG 图标，Tree-shakeable                           |
+| 后端框架      | FastAPI                             | 异步原生支持 + Pydantic v2 自动校验 + 自动 OpenAPI 文档 |
+| ORM           | SQLAlchemy 2.0 async                | 异步引擎 + WAL 模式并发写入                             |
+| 数据库        | SQLite                              | 作业要求，零配置，本地文件存储                          |
+| 大模型        | DeepSeek V4 Pro                     | 作业要求，`deepseek-chat` 模型                        |
+| 实时通信      | WebSocket                           | 原生支持，双向事件流                                    |
+| 样式方案      | CSS Variables                       | Design Token 体系，零运行时开销                         |
+| 单元/组件测试 | Vitest + Vue Test Utils + happy-dom | Vite 原生集成，速度快                                   |
+| E2E 测试      | Playwright                          | Chromium headless，Mock 模式运行                        |
+| 后端测试      | pytest + httpx                      | ASGITransport 内存测试，不走网络                        |
 
 ---
 
 ## 主要 API 列表
 
-| 方法 | 端点 | 说明 |
-|------|------|------|
-| `GET` | `/api/discussions` | 列出所有讨论（按创建时间倒序） |
-| `POST` | `/api/discussions` | 创建讨论（`topic` 1–200 字，`expert_count` 4–8） |
-| `GET` | `/api/discussions/:id` | 讨论详情（含嘉宾、最近发言、共识） |
-| `DELETE` | `/api/discussions/:id` | 删除讨论（IN_PROGRESS 自动停止引擎） |
-| `POST` | `/api/discussions/:id/panel/generate` | LLM 生成嘉宾阵容（仅 PENDING_PANEL） |
-| `POST` | `/api/discussions/:id/panel/regenerate` | 全部重新生成嘉宾（仅 PANEL_READY） |
-| `GET` | `/api/discussions/:id/panel` | 获取嘉宾列表 |
-| `PUT` | `/api/discussions/:id/panel/:pid` | 替换单个专家（请求体为空，后端调用 LLM） |
-| `POST` | `/api/discussions/:id/start` | 开始讨论（原子乐观锁，启动后台引擎） |
-| `POST` | `/api/discussions/:id/end` | 结束讨论（幂等，生成主持人总结） |
-| `GET` | `/api/discussions/:id/transcript` | 分页获取 Transcript（`offset` + `limit`） |
-| `GET` | `/api/discussions/:id/consensus` | 获取全部共识与分歧 |
-| `WS` | `/ws/discussions/:id` | 实时事件流（9 种事件类型） |
+| 方法       | 端点                                      | 说明                                                   |
+| ---------- | ----------------------------------------- | ------------------------------------------------------ |
+| `GET`    | `/api/discussions`                      | 列出所有讨论（按创建时间倒序）                         |
+| `POST`   | `/api/discussions`                      | 创建讨论（`topic` 1–200 字，`expert_count` 4–8） |
+| `GET`    | `/api/discussions/:id`                  | 讨论详情（含嘉宾、最近发言、共识）                     |
+| `DELETE` | `/api/discussions/:id`                  | 删除讨论（IN_PROGRESS 自动停止引擎）                   |
+| `POST`   | `/api/discussions/:id/panel/generate`   | LLM 生成嘉宾阵容（仅 PENDING_PANEL）                   |
+| `POST`   | `/api/discussions/:id/panel/regenerate` | 全部重新生成嘉宾（仅 PANEL_READY）                     |
+| `GET`    | `/api/discussions/:id/panel`            | 获取嘉宾列表                                           |
+| `PUT`    | `/api/discussions/:id/panel/:pid`       | 替换单个专家（请求体为空，后端调用 LLM）               |
+| `POST`   | `/api/discussions/:id/start`            | 开始讨论（原子乐观锁，启动后台引擎）                   |
+| `POST`   | `/api/discussions/:id/end`              | 结束讨论（幂等，生成主持人总结）                       |
+| `GET`    | `/api/discussions/:id/transcript`       | 分页获取 Transcript（`offset` + `limit`）          |
+| `GET`    | `/api/discussions/:id/consensus`        | 获取全部共识与分歧                                     |
+| `WS`     | `/ws/discussions/:id`                   | 实时事件流（9 种事件类型）                             |
 
 WebSocket 事件：`initial_state` · `discussion_started` · `panel_generated` · `panelist_status` · `new_message` · `consensus_update` · `discussion_ended` · `discussion_deleted` · `error`
 
@@ -127,58 +129,58 @@ WebSocket 事件：`initial_state` · `discussion_started` · `panel_generated` 
 
 ### 业务流程（全部 4 个 DiscussionStatus 状态）
 
-- [x] **首页**：讨论列表（按时间倒序）+ 创建讨论（话题输入 + 4–8 位专家选择器）
-- [x] **PENDING_PANEL**：自动调用 LLM 生成嘉宾阵容 · skeleton 加载态 · 失败重试
-- [x] **PANEL_READY**：主持人 + 专家卡片阵列 · 单独替换专家 · 全部重新生成（二次确认）· 开始讨论
-- [x] **IN_PROGRESS 演播厅**：舞台区 + 当前发言横幅 + 共识面板 + Transcript 面板 · WebSocket 实时事件驱动
-- [x] **ENDED**：主持人自然语言总结 + 完整共识/Transcript 回顾 + 返回首页 / 删除讨论
+- [X] **首页**：讨论列表（按时间倒序）+ 创建讨论（话题输入 + 4–8 位专家选择器）
+- [X] **PENDING_PANEL**：自动调用 LLM 生成嘉宾阵容 · skeleton 加载态 · 失败重试
+- [X] **PANEL_READY**：主持人 + 专家卡片阵列 · 单独替换专家 · 全部重新生成（二次确认）· 开始讨论
+- [X] **IN_PROGRESS 演播厅**：舞台区 + 当前发言横幅 + 共识面板 + Transcript 面板 · WebSocket 实时事件驱动
+- [X] **ENDED**：主持人自然语言总结 + 完整共识/Transcript 回顾 + 返回首页 / 删除讨论
 
 ### 嘉宾状态可视化
 
-- [x] **STANDBY**：opacity 0.7 静态卡片
-- [x] **PREPARING**：opacity 0.85 + 嘉宾色 1px 边框微亮（静态，无动画）
-- [x] **SPEAKING**：opacity 1.0 + 嘉宾色 2px 边框高亮 + 背景微提亮 8%（静态，无脉冲）
+- [X] **STANDBY**：opacity 0.7 静态卡片
+- [X] **PREPARING**：opacity 0.85 + 嘉宾色 1px 边框微亮（静态，无动画）
+- [X] **SPEAKING**：opacity 1.0 + 嘉宾色 2px 边框高亮 + 背景微提亮 8%（静态，无脉冲）
 
 ### 实时演播厅
 
-- [x] 主持人调度发言 + 专家举手/抢答/补充/反驳
-- [x] 每次发言控制在 1–2 句 · 禁止机械轮流
-- [x] 共识/分歧每 3–5 次发言后自动提炼，实时更新
-- [x] Transcript 独立滚动 · 自动追随最新 · 手动上滚暂停 + 回到底部按钮
-- [x] WebSocket 连接三态指示（绿已连接 / 黄重连中 / 红已断开）
-- [x] 讨论引擎崩溃 30s 无事件自动提示
+- [X] 主持人调度发言 + 专家举手/抢答/补充/反驳
+- [X] 每次发言控制在 1–2 句 · 禁止机械轮流
+- [X] 共识/分歧每 3–5 次发言后自动提炼，实时更新
+- [X] Transcript 独立滚动 · 自动追随最新 · 手动上滚暂停 + 回到底部按钮
+- [X] WebSocket 连接三态指示（绿已连接 / 黄重连中 / 红已断开）
+- [X] 讨论引擎崩溃 30s 无事件自动提示
 
 ### 响应式布局
 
-- [x] 超宽屏 ≥1440px · 桌面 ≥1024px · 平板 768–1023px · 手机 <768px
-- [x] 平板端双栏自动切换 Tab 模式（共识 / Transcript）
-- [x] 手机端 ExpertCard 紧凑模式（色块 + 姓名 + 状态指示器）
-- [x] 各区域独立滚动，页面不出整页滚动条
+- [X] 超宽屏 ≥1440px · 桌面 ≥1024px · 平板 768–1023px · 手机 <768px
+- [X] 平板端双栏自动切换 Tab 模式（共识 / Transcript）
+- [X] 手机端 ExpertCard 紧凑模式（色块 + 姓名 + 状态指示器）
+- [X] 各区域独立滚动，页面不出整页滚动条
 
 ### 无障碍
 
-- [x] 对比度全部 ≥ 4.5:1（WCAG AA）
-- [x] 跳过链接 + focus-visible 焦点轮廓
-- [x] 专家网格 role="grid" + Arrow 键导航
-- [x] Dialog role="dialog" + Tab 循环锁定 + Escape 关闭
-- [x] Transcript role="log" + aria-live 自动播报
-- [x] 状态三重编码（颜色 + 图标 + 文字）
-- [x] prefers-reduced-motion 禁用全部动画
+- [X] 对比度全部 ≥ 4.5:1（WCAG AA）
+- [X] 跳过链接 + focus-visible 焦点轮廓
+- [X] 专家网格 role="grid" + Arrow 键导航
+- [X] Dialog role="dialog" + Tab 循环锁定 + Escape 关闭
+- [X] Transcript role="log" + aria-live 自动播报
+- [X] 状态三重编码（颜色 + 图标 + 文字）
+- [X] prefers-reduced-motion 禁用全部动画
 
 ### 设计与工程化
 
-- [x] 暗色单主题 · 60+ CSS Design Token 变量
-- [x] 10 色嘉宾身份色板 + 4 色系统状态色 + 2 色共识/分歧色（三套色系严格分离）
-- [x] UI UX Pro Max 设计智能集成（采纳 9 项 / 拒绝 6 项 / 定制融合）
-- [x] 类型安全的 WebSocket 事件判别联合 + sequence_id 去重
-- [x] 原子性乐观锁（`UPDATE WHERE status = :expected`）
-- [x] LLM 输出校验层（引用完整性检查 + 字段存在性 + 重试注入）
+- [X] 暗色单主题 · 60+ CSS Design Token 变量
+- [X] 10 色嘉宾身份色板 + 4 色系统状态色 + 2 色共识/分歧色（三套色系严格分离）
+- [X] UI UX Pro Max 设计智能集成（采纳 9 项 / 拒绝 6 项 / 定制融合）
+- [X] 类型安全的 WebSocket 事件判别联合 + sequence_id 去重
+- [X] 原子性乐观锁（`UPDATE WHERE status = :expected`）
+- [X] LLM 输出校验层（引用完整性检查 + 字段存在性 + 重试注入）
 
 ### 测试
 
-- [x] 前端 43 条（30 单元 + 13 组件）· Vitest + Vue Test Utils
-- [x] E2E 7 条 · Playwright + Chromium headless
-- [x] 后端 10 条 · pytest + httpx ASGITransport
+- [X] 前端 43 条（30 单元 + 13 组件）· Vitest + Vue Test Utils
+- [X] E2E 7 条 · Playwright + Chromium headless
+- [X] 后端 10 条 · pytest + httpx ASGITransport
 
 ---
 

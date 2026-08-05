@@ -1,4 +1,4 @@
-<!-- DDD §06-page-layout §4 — 演播厅 · DDD §09-responsive-design §4 -->
+<!-- DDD §06-page-layout §4 — 演播厅 · 实时 WebSocket 事件驱动 -->
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useDiscussionStore } from '@/stores/discussion'
@@ -8,42 +8,67 @@ import type { WsEnvelope, WsPanelistStatus, WsConsensusUpdate, WsInitialState } 
 import type { Message } from '@/types/domain'
 import { MockWsServer } from '@/mocks/ws-server'
 import { useMediaQuery } from '@/composables/useMediaQuery'
+import * as api from '@/api/endpoints'
 import StageArea from './StageArea.vue'
 import CurrentSpeechBanner from './CurrentSpeechBanner.vue'
 import ConsensusPanel from '@/components/consensus/ConsensusPanel.vue'
 import TranscriptPanel from '@/components/transcript/TranscriptPanel.vue'
 
+const IS_MOCK = import.meta.env.VITE_MOCK === 'true'
+
 const discussionStore = useDiscussionStore()
 const wsStore = useWebSocketStore()
 const { isTablet, isMobile } = useMediaQuery()
 
-const mockWs = new MockWsServer()
-const currentMessage = ref(discussionStore.messages.at(-1) ?? null)
+const mockWs = IS_MOCK ? new MockWsServer() : null
+const currentMessage = ref<Message | null>(discussionStore.messages.at(-1) ?? null)
 const activeTab = ref<'consensus' | 'transcript'>('transcript')
 
-onMounted(() => {
-  wsStore.status = WsConnectionStatus.CONNECTING
-  setTimeout(() => {
-    wsStore.status = WsConnectionStatus.CONNECTED
-    startSimulation()
-  }, 500)
+onMounted(async () => {
+  if (!discussionStore.discussion) return
+  const discId = discussionStore.discussion.id
+
+  // 拉取完整 Transcript（不仅限 20 条）
+  try {
+    const res = await api.fetchTranscript(discId, 0, 500)
+    discussionStore.messages = res.data.messages
+  } catch { /* 使用初始加载的数据 */ }
+
+  if (IS_MOCK) {
+    // Mock 模式
+    wsStore.status = WsConnectionStatus.CONNECTING
+    setTimeout(() => {
+      wsStore.status = WsConnectionStatus.CONNECTED
+      mockWs!.connect(handleWsEvent)
+      mockWs!.setup(discussionStore.panelists, discussionStore.messages, discussionStore.consensusPoints)
+      mockWs!.start()
+    }, 500)
+  } else {
+    // 真实 WebSocket 模式
+    wsStore.setEventHandler(handleWsEvent)
+    wsStore.connect(discId)
+  }
 })
 
 onUnmounted(() => {
-  mockWs.disconnect()
+  mockWs?.disconnect()
   wsStore.disconnect()
 })
 
-function startSimulation() {
-  mockWs.connect(handleWsEvent)
-  mockWs.setup(discussionStore.panelists, discussionStore.messages, discussionStore.consensusPoints)
-  mockWs.start()
-}
-
+// 统一事件处理（Mock 和真实 WS 共用）
 function handleWsEvent(envelope: WsEnvelope) {
   wsStore.lastSequenceId = envelope.sequence_id
   const data = envelope.data
+
   switch (envelope.event) {
+    case 'initial_state': {
+      const d = data as WsInitialState
+      // 用 WS 初始状态覆盖（比 REST 加载的数据更新）
+      if (d.panelists?.length) discussionStore.panelists = d.panelists
+      if (d.latest_messages?.length) discussionStore.messages = d.latest_messages
+      if (d.consensus_points) discussionStore.consensusPoints = d.consensus_points
+      break
+    }
     case 'panelist_status':
       discussionStore.handlePanelistStatus(data as WsPanelistStatus)
       break
@@ -59,33 +84,29 @@ function handleWsEvent(envelope: WsEnvelope) {
     case 'discussion_ended':
       discussionStore.handleDiscussionEnded()
       break
-    case 'initial_state':
-      if (discussionStore.panelists.length === 0) {
-        discussionStore.panelists = (data as WsInitialState).panelists
-      }
-      break
   }
 }
 
 defineExpose({
   endDiscussion() {
-    mockWs.end()
-    discussionStore.discussion!.status = 'ENDED' as any
+    if (IS_MOCK) {
+      mockWs?.end()
+    }
+    if (discussionStore.discussion) {
+      discussionStore.discussion.status = 'ENDED' as any
+    }
   },
 })
 </script>
 
 <template>
   <div class="studio-view">
-    <!-- 舞台区 -->
     <StageArea :host="discussionStore.host" :experts="discussionStore.experts" />
 
-    <!-- 当前发言 (aria-live 屏幕阅读器播报) -->
     <div role="status" aria-live="polite" aria-atomic="true">
       <CurrentSpeechBanner :message="currentMessage" />
     </div>
 
-    <!-- 桌面：双栏；平板/手机：Tab 切换 -->
     <div class="dual-panel" v-if="!isTablet && !isMobile">
       <ConsensusPanel :points="discussionStore.consensusPoints" />
       <TranscriptPanel :messages="discussionStore.messages" />
@@ -93,20 +114,10 @@ defineExpose({
 
     <div class="tab-panel" v-else>
       <div class="tab-bar" role="tablist">
-        <button
-          role="tab"
-          :aria-selected="activeTab === 'transcript'"
-          class="tab-btn"
-          :class="{ active: activeTab === 'transcript' }"
-          @click="activeTab = 'transcript'"
-        >Transcript</button>
-        <button
-          role="tab"
-          :aria-selected="activeTab === 'consensus'"
-          class="tab-btn"
-          :class="{ active: activeTab === 'consensus' }"
-          @click="activeTab = 'consensus'"
-        >共识与分歧</button>
+        <button role="tab" :aria-selected="activeTab === 'transcript'" class="tab-btn"
+                :class="{ active: activeTab === 'transcript' }" @click="activeTab = 'transcript'">Transcript</button>
+        <button role="tab" :aria-selected="activeTab === 'consensus'" class="tab-btn"
+                :class="{ active: activeTab === 'consensus' }" @click="activeTab = 'consensus'">共识与分歧</button>
       </div>
       <div class="tab-content" role="tabpanel">
         <ConsensusPanel v-if="activeTab === 'consensus'" :points="discussionStore.consensusPoints" />
@@ -117,51 +128,17 @@ defineExpose({
 </template>
 
 <style scoped>
-.studio-view {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
+.studio-view { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 .dual-panel {
-  display: grid;
-  grid-template-columns: 35fr 65fr;
-  gap: var(--space-md);
-  flex: 1;
-  min-height: 0;
-  padding: 0 var(--space-lg) var(--space-md);
+  display: grid; grid-template-columns: 35fr 65fr; gap: var(--space-md);
+  flex: 1; min-height: 0; padding: 0 var(--space-lg) var(--space-md);
 }
-
-/* Tab 模式 (平板/手机) */
-.tab-panel {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 0 var(--space-md) var(--space-md);
-}
-.tab-bar {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--border-subtle);
-  margin-bottom: var(--space-sm);
-  flex-shrink: 0;
-}
+.tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 var(--space-md) var(--space-md); }
+.tab-bar { display: flex; border-bottom: 1px solid var(--border-subtle); margin-bottom: var(--space-sm); flex-shrink: 0; }
 .tab-btn {
-  padding: var(--space-sm) var(--space-md);
-  font-size: var(--text-sm);
-  font-weight: var(--font-medium);
-  color: var(--text-tertiary);
-  border-bottom: 2px solid transparent;
-  transition: all var(--duration-fast);
+  padding: var(--space-sm) var(--space-md); font-size: var(--text-sm); font-weight: var(--font-medium);
+  color: var(--text-tertiary); border-bottom: 2px solid transparent; transition: all var(--duration-fast);
 }
-.tab-btn.active {
-  color: var(--text-primary);
-  border-bottom-color: var(--color-info);
-}
-.tab-content {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
+.tab-btn.active { color: var(--text-primary); border-bottom-color: var(--color-info); }
+.tab-content { flex: 1; min-height: 0; overflow: hidden; }
 </style>

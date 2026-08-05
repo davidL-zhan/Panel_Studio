@@ -73,7 +73,7 @@ async def get_discussion(discussion_id: str, db: AsyncSession = Depends(get_db))
     )).scalars().all()
 
     messages = (await db.execute(
-        select(Message).where(Message.discussion_id == discussion_id).order_by(Message.sequence.desc()).limit(20)
+        select(Message).where(Message.discussion_id == discussion_id).order_by(Message.sequence.desc()).limit(500)
     )).scalars().all()
 
     cps = (await db.execute(
@@ -389,7 +389,7 @@ async def ws_discussion(websocket: WebSocket, discussion_id: str):
                 select(Panelist).where(Panelist.discussion_id == discussion_id)
             )).scalars().all()
             msgs = (await db.execute(
-                select(Message).where(Message.discussion_id == discussion_id).order_by(Message.sequence.desc()).limit(20)
+                select(Message).where(Message.discussion_id == discussion_id).order_by(Message.sequence.desc()).limit(500)
             )).scalars().all()
             cps = (await db.execute(
                 select(ConsensusPoint).where(ConsensusPoint.discussion_id == discussion_id)
