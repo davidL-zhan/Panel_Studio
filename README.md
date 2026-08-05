@@ -31,7 +31,10 @@ cd backend
 conda create -n panel-studio python=3.12 -y
 conda activate panel-studio
 pip install -r requirements.txt
-cp .env.example .env          # 编辑 .env，填入 DEEPSEEK_API_KEY
+# 设置 DeepSeek API Key（从系统环境变量读取，不写入文件）
+export DEEPSEEK_API_KEY=sk-your-key-here        # Linux/macOS
+set DEEPSEEK_API_KEY=sk-your-key-here           # Windows CMD
+$env:DEEPSEEK_API_KEY="sk-your-key-here"        # Windows PowerShell
 python scripts/init_db.py     # 初始化数据库表
 python scripts/seed.py        # 插入 5 条样例数据
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -55,11 +58,11 @@ cd backend && pytest               # 10 条 API 测试
 
 ## 环境变量配置
 
-### 后端（`backend/.env`）
+### 后端（系统环境变量）
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `DEEPSEEK_API_KEY` | DeepSeek API Key（**必填**） | — |
+| `DEEPSEEK_API_KEY` | DeepSeek API Key（**必填**，仅从环境变量读取） | — |
 | `DEEPSEEK_BASE_URL` | API 地址 | `https://api.deepseek.com/v1` |
 | `DEEPSEEK_MODEL` | 模型 ID | `deepseek-chat` |
 | `DATABASE_URL` | SQLite 数据库路径 | `sqlite+aiosqlite:///./panel_studio.db` |
