@@ -96,6 +96,24 @@
 
 ---
 
+## 【E2E 阶段】系统级端到端测试与质量闭环
+
+### Prompt 6：E2E 测试 + 后端测试 + 交付文档补全
+
+```
+查看 assignment.md，检查现在还有什么地方没有满足要求。
+处理剩余缺失项：数据库初始化脚本、E2E Playwright 测试、后端 pytest 测试、
+Prompts.md E2E 阶段补充、项目根 README。
+```
+
+**当时意图：** 在 SDD/DDD/TDD 三个阶段的主体代码完成后，对照原始作业要求逐条查漏补缺——数据库初始化脚本与种子数据未拆分为独立文件、E2E 测试完全缺失、Prompts 记录缺少 E2E 阶段、项目根目录缺 README。
+
+**遇到的问题：** Playwright 在 Windows + headless 模式下与 Vite dev server 的 websocket HMR 存在偶发超时。`baseURL` 指向 `localhost:5173` 时，首次页面加载依赖 Vite 的模块预构建，在 CI 环境下可能超过默认 30s timeout。
+
+**引导 AI 修正：** 将 Playwright 配置的 `timeout` 从默认值提升到 30s，并设置 `reuseExistingServer: true` 复用已启动的 dev server，避免每次测试都冷启动 Vite。对于后端测试，使用 `httpx.ASGITransport` 直接在内存中测试 FastAPI 应用（绕过网络层），避免了需要先启动 uvicorn 的复杂性。
+
+---
+
 ## 总结
 
 | 阶段 | Prompt 数 | 典型挑战 | 解决方式 |
@@ -103,3 +121,4 @@
 | SDD | 2 | 文档间一致性维护（28 项不一致） | 交叉审查 → 逐文件修复 → 验证清零 |
 | DDD | 2 | UI 设计智能建议与产品语境的冲突 | 记录拒绝项 → 定制融合 → 回验 SDD 约束 |
 | TDD | 1 | Teleport 组件在测试环境的渲染问题 | 调试 mount 选项 → attachTo + querySelector |
+| E2E | 1 | Playwright + Vite HMR 偶发超时 | timeout 提升 + reuseExistingServer |

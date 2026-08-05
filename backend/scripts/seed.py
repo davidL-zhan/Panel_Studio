@@ -5,7 +5,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 from app.database import init_db, AsyncSessionLocal, Discussion, Panelist
 from app.llm import assign_colors, HOST_COLOR
 
-
+# 预设色板仅用于种子数据着色；生产环境由 LLM 场景 A 调用 assign_colors 分配
 SEEDS = [
     {
         "topic": "AI 会取代人类创造力吗？",
