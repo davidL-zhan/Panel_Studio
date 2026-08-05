@@ -23,6 +23,9 @@ const { isTablet, isMobile } = useMediaQuery()
 const mockWs = IS_MOCK ? new MockWsServer() : null
 const currentMessage = ref<Message | null>(discussionStore.messages.at(-1) ?? null)
 const activeTab = ref<'consensus' | 'transcript'>('transcript')
+const pausedMessage = ref('')
+const stageSummary = ref('')
+const showContinuePrompt = ref(false)
 
 onMounted(async () => {
   if (!discussionStore.discussion) return
@@ -88,10 +91,36 @@ function handleWsEvent(envelope: WsEnvelope) {
     case 'consensus_update':
       discussionStore.handleConsensusUpdate(data as WsConsensusUpdate)
       break
+    case 'host_prompt': {
+      const d = data as any
+      pausedMessage.value = d.message
+      stageSummary.value = d.summary || ''
+      showContinuePrompt.value = true
+      break
+    }
+    case 'discussion_paused': {
+      const d = data as any
+      pausedMessage.value = d.message
+      showContinuePrompt.value = true
+      break
+    }
     case 'discussion_ended':
       discussionStore.handleDiscussionEnded()
       break
   }
+}
+
+const emit = defineEmits<{ end: [] }>()
+
+function handleContinue() {
+  showContinuePrompt.value = false
+  stageSummary.value = ''
+  if (IS_MOCK) { mockWs?.start() } else { wsStore.send({ type: 'continue' }) }
+}
+
+function handleEndFromPrompt() {
+  showContinuePrompt.value = false
+  emit('end')
 }
 
 defineExpose({
@@ -119,6 +148,18 @@ defineExpose({
 
     <div role="status" aria-live="polite" aria-atomic="true">
       <CurrentSpeechBanner :message="currentMessage" />
+    </div>
+
+    <!-- 阶段总结 + 暂停提示 -->
+    <div v-if="showContinuePrompt" class="continue-banner" role="alert">
+      <div class="continue-body">
+        <p class="continue-msg">{{ pausedMessage }}</p>
+        <p v-if="stageSummary" class="stage-summary">{{ stageSummary }}</p>
+      </div>
+      <div class="continue-actions">
+        <button class="btn btn-continue" @click="handleContinue">继续讨论</button>
+        <button class="btn btn-end-prompt" @click="handleEndFromPrompt">结束讨论</button>
+      </div>
     </div>
 
     <div class="dual-panel" v-if="!isTablet && !isMobile">
@@ -150,6 +191,30 @@ defineExpose({
 .ws-banner.connecting,
 .ws-banner.reconnecting { color: var(--color-warning); }
 .ws-banner.disconnected { color: var(--color-error); }
+
+.continue-banner {
+  padding: var(--space-md) var(--space-xl); background: var(--bg-surface-2);
+  border-top: 1px solid var(--color-warning); border-bottom: 1px solid var(--color-warning);
+  flex-shrink: 0; max-height: 180px; overflow-y: auto;
+}
+.continue-body { margin-bottom: var(--space-sm); }
+.continue-msg { font-size: var(--text-sm); color: var(--color-warning); font-weight: var(--font-semibold); }
+.stage-summary {
+  font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6;
+  margin-top: var(--space-sm);
+}
+.continue-actions {
+  display: flex; gap: var(--space-sm);
+}
+.btn-continue, .btn-end-prompt {
+  height: 36px; padding: 0 var(--space-lg); border-radius: var(--radius-md);
+  font-size: var(--text-sm); font-weight: var(--font-semibold);
+  white-space: nowrap; transition: filter var(--duration-fast);
+}
+.btn-continue { background: var(--color-success); color: var(--bg-root); }
+.btn-continue:hover { filter: brightness(1.1); }
+.btn-end-prompt { background: var(--color-error); color: #fff; }
+.btn-end-prompt:hover { filter: brightness(1.1); }
 .dual-panel {
   display: grid; grid-template-columns: 35fr 65fr; gap: var(--space-md);
   flex: 1; min-height: 0; padding: 0 var(--space-lg) var(--space-md);

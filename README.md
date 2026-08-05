@@ -94,7 +94,7 @@ cd backend && pytest                  # 10 条 API 测试
 | ORM | SQLAlchemy 2.0 async | 异步引擎 · WAL 模式 · busy_timeout |
 | 数据库 | SQLite | 零配置本地存储 |
 | LLM | DeepSeek V4 Pro | `deepseek-chat` 模型 · 5 个场景 Prompt |
-| 实时通信 | WebSocket | 9 种事件类型 · sequence_id 去重 |
+| 实时通信 | WebSocket | 11 种事件类型 · sequence_id 去重 · 暂停/恢复 |
 | 样式方案 | CSS Variables | 60+ Design Token · 零运行时开销 · 暗色单主题 |
 | 单元/组件测试 | Vitest + Vue Test Utils + happy-dom | Vite 原生集成 |
 | E2E 测试 | Playwright | Chromium headless · Mock 模式运行 |
@@ -116,12 +116,13 @@ cd backend && pytest                  # 10 条 API 测试
 | `PUT` | `/api/discussions/:id/panel/:pid` | 替换单个专家（请求体为空，后端调用 LLM） |
 | `POST` | `/api/discussions/:id/start` | 开始讨论（原子乐观锁 `UPDATE WHERE status=PANEL_READY`） |
 | `POST` | `/api/discussions/:id/end` | 结束讨论（幂等：已 ENDED 返回已有总结 · 引擎生成 SUMMARY Message） |
+| `POST` | `/api/discussions/:id/continue` | 恢复暂停的讨论（每 30 轮自动暂停后调用） |
 | `GET` | `/api/discussions/:id/transcript` | 分页获取 Transcript（`offset` + `limit`） |
 | `GET` | `/api/discussions/:id/consensus` | 获取全部共识与分歧 |
 | `WS` | `/ws/discussions/:id` | 实时事件流（连接即推 initial_state） |
 
 **WebSocket 事件：**
-`initial_state` · `discussion_started` · `panel_generated` · `panelist_status` · `new_message` · `consensus_update` · `discussion_ended` · `discussion_deleted` · `error`
+`initial_state` · `discussion_started` · `panel_generated` · `panelist_status` · `new_message` · `consensus_update` · `host_prompt` · `discussion_paused` · `discussion_ended` · `discussion_deleted` · `error`
 
 **HTTP 错误码：** `200` · `201` · `204` · `400` · `404` · `409` · `422` · `429` · `502` · `503` · `500`
 
@@ -150,7 +151,7 @@ cd backend && pytest                  # 10 条 API 测试
 - [x] Transcript 独立滚动 · 自动追随最新 · 手动上滚 50px 暂停 + 回到底部按钮 · 完整显示所有发言
 - [x] WebSocket 连接三态指示（DiscussionTopBar 绿已连接 / 黄重连中 / 红已断开）
 - [x] WS 连接横幅（连接中/重连中/已断开状态提示）
-- [x] 讨论引擎崩溃 30s 无事件自动提示（WS zombieTimeout）
+- [x] 每 30 轮发言自动暂停：主持人阶段性总结 + 询问是否继续 · 60s 无响应自动暂停 · 前端"继续讨论"按钮恢复 · WS `host_prompt` / `discussion_paused` 事件
 
 ### 响应式布局
 

@@ -104,6 +104,7 @@ async function handleDelete() {
       <StudioView
         v-else-if="store.discussion.status === DiscussionStatus.IN_PROGRESS"
         ref="studioRef"
+        @end="showEndConfirm = true"
       />
 
       <!-- ENDED -->

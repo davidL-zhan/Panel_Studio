@@ -14,7 +14,7 @@ from .schemas import (
 )
 from .llm import generate_panel, replace_expert, assign_colors, HOST_COLOR, LLMError, PANELIST_COLORS
 from .ws_manager import manager
-from .engine import run_discussion_engine
+from .engine import run_discussion_engine, resume_discussion
 
 # 讨论引擎运行中的任务
 _engine_tasks: dict[str, asyncio.Task] = {}
@@ -324,6 +324,13 @@ async def api_end_discussion(discussion_id: str, db: AsyncSession = Depends(get_
     )
 
 
+@app.post("/api/discussions/{discussion_id}/continue")
+async def api_continue_discussion(discussion_id: str):
+    """恢复暂停的讨论（30 轮后提示）"""
+    resume_discussion(discussion_id)
+    return {"status": "ok", "message": "讨论继续"}
+
+
 # ══════════════════════════════════════════════════════
 # REST：数据查询
 # ══════════════════════════════════════════════════════
@@ -406,9 +413,11 @@ async def ws_discussion(websocket: WebSocket, discussion_id: str):
     try:
         while True:
             data = await websocket.receive_text()
-            # 仅处理 ping/pong
+            # 处理客户端消息
             if '"ping"' in data:
                 await websocket.send_text('{"type":"pong"}')
+            elif '"continue"' in data:
+                resume_discussion(discussion_id)
     except WebSocketDisconnect:
         pass
     finally:

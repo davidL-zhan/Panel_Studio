@@ -101,6 +101,12 @@ export const useWebSocketStore = defineStore('webSocket', () => {
     }, delay)
   }
 
+  function send(data: object) {
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(data))
+    }
+  }
+
   function disconnect() {
     stopHeartbeat()
     if (reconnectTimer) {
@@ -127,6 +133,7 @@ export const useWebSocketStore = defineStore('webSocket', () => {
     reconnectAttempt,
     connect,
     disconnect,
+    send,
     setEventHandler,
   }
 })

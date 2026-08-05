@@ -5,6 +5,22 @@ from .database import AsyncSessionLocal, Discussion, Panelist, Message, Consensu
 from .llm import discussion_turn, extract_consensus, generate_summary, LLMError
 from .ws_manager import manager
 
+# 全局暂停事件：discussion_id → asyncio.Event
+_pause_events: dict[str, asyncio.Event] = {}
+
+
+def resume_discussion(discussion_id: str):
+    """外部调用：恢复暂停的讨论"""
+    evt = _pause_events.get(discussion_id)
+    if evt:
+        evt.set()
+
+
+def pause_discussion(discussion_id: str):
+    """外部调用：主动暂停讨论"""
+    if discussion_id not in _pause_events:
+        _pause_events[discussion_id] = asyncio.Event()
+
 
 async def _build_context(discussion_id: str):
     async with AsyncSessionLocal() as db:
@@ -167,6 +183,37 @@ async def run_discussion_engine(discussion_id: str, stop_event: asyncio.Event):
                     pass  # 共识提炼失败不中断讨论
 
                 consensus_interval = random.randint(3, 5)
+
+            # 每 30 条发言：LLM 生成阶段总结，暂停等用户确认
+            if seq % 30 == 0 and seq > 0:
+                _, panelists, all_msgs, all_cps = await _build_context(discussion_id)
+                transcript = _build_transcript_text(all_msgs, panelists)
+                consensus_text = _build_consensus_text(all_cps)
+
+                # 自动生成阶段性总结
+                try:
+                    stage_summary = await generate_summary(disc.topic, transcript, consensus_text)
+                except Exception:
+                    stage_summary = f"讨论已进行 {seq} 轮，各方观点交锋激烈。"
+
+                await manager.broadcast(discussion_id, "host_prompt", {
+                    "message": f"讨论已进行 {seq} 轮，以下是阶段性总结。",
+                    "summary": stage_summary,
+                    "total_messages": seq,
+                })
+                # 等待用户确认（60s），超时自动暂停
+                if discussion_id not in _pause_events:
+                    _pause_events[discussion_id] = asyncio.Event()
+                else:
+                    _pause_events[discussion_id].clear()
+
+                try:
+                    await asyncio.wait_for(_pause_events[discussion_id].wait(), timeout=60)
+                except asyncio.TimeoutError:
+                    await manager.broadcast(discussion_id, "discussion_paused", {
+                        "message": "讨论已暂停，点击继续按钮恢复。",
+                    })
+                    await _pause_events[discussion_id].wait()
 
             round_num += 1
             await asyncio.sleep(1.5)

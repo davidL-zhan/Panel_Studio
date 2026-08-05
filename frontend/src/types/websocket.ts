@@ -14,6 +14,8 @@ export type WsEventType =
   | 'consensus_update'
   | 'discussion_ended'
   | 'discussion_deleted'
+  | 'discussion_paused'
+  | 'host_prompt'
   | 'error'
 
 // ── 事件信封 ──────────────────────────────────────
@@ -34,6 +36,8 @@ export type WsEventPayload =
   | WsConsensusUpdate
   | WsDiscussionEnded
   | WsDiscussionDeleted
+  | WsDiscussionPaused
+  | WsHostPrompt
   | WsError
 
 export interface WsInitialState {
@@ -76,6 +80,16 @@ export interface WsDiscussionEnded {
 
 export interface WsDiscussionDeleted {
   discussion_id: string
+}
+
+export interface WsDiscussionPaused {
+  message: string
+}
+
+export interface WsHostPrompt {
+  message: string
+  summary: string
+  total_messages: number
 }
 
 export interface WsError {
