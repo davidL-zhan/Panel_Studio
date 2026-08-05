@@ -57,6 +57,8 @@ erDiagram
     }
 ```
 
+**关系基数：** Discussion : Panelist = `1 : (1 + expert_count)` · Discussion : Message = `1 : 0..*` · Discussion : ConsensusPoint = `1 : 0..*` · Message : Panelist = `N : 1`。 [→ S-06 修复]
+
 ---
 
 ## 2. 表结构 DDL
@@ -301,6 +303,25 @@ python -c "from app.models import Base, engine; Base.metadata.create_all(engine)
 
 # 初始化脚本（生产就绪版本）见: scripts/init_db.py
 ```
+
+### 4.1 SQLite 并发配置 [→ M-07 修复]
+
+多讨论并行运行时需配置以下 SQLite 参数防止写入冲突：
+
+```python
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")       # Write-Ahead Logging，读写并发
+    cursor.execute("PRAGMA busy_timeout=5000")       # 写锁等待 5s 后超时
+    cursor.execute("PRAGMA foreign_keys=ON")         # 强制外键约束
+    cursor.close()
+```
+
+**连接策略：** FastAPI 后端采用单一数据库文件 + SQLAlchemy 连接池（`pool_size=5, max_overflow=10`）。由于 SQLite WAL 模式下写入串行化，讨论引擎中的数据库写入操作应通过 `asyncio.to_thread()` 委托到线程池执行，避免阻塞事件循环。
 
 ---
 

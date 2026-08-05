@@ -31,14 +31,29 @@ POST https://api.deepseek.com/v1/chat/completions
 - `temperature`: 场景 A/E 用 `0.8`（多样性），B 用 `0.7`，C/D 用 `0.3`（准确性）
 - `response_format`: 场景 A/B/C/E 使用 `{ "type": "json_object" }`，场景 D 不需要
 
-### 2.2 错误处理
+### 2.2 输出校验
+
+所有 LLM JSON 输出在写入数据库前必须经过校验层处理。校验规则详见 [`05-validation-layer.md`](./05-validation-layer.md)。核心原则：
+
+- **永不信任 LLM 输出**：所有字段均需校验类型、范围和引用完整性
+- 校验失败 → 重试 1 次（将校验错误信息注入重试 prompt）
+- 重试仍失败 → 按 §2.3 错误处理策略降级
+
+[→ M-08 修复]
+
+### 2.3 错误处理
 
 | 情况 | 处理策略 |
 |------|----------|
-| API 超时（> 30s） | 重试 1 次，仍失败则通过 WS 推送 `error`（recoverable） |
+| API 超时（> 30s） | 重试 1 次（指数退避 1s → 2s），仍失败则通过 WS 推送 `error`（recoverable） |
 | 返回 JSON 解析失败 | 重试 1 次，仍失败则通过 WS 推送 `error`（不可恢复，停止讨论） |
-| API 返回 4xx/5xx | 通过 WS 推送 `error`，停止讨论 |
-| `finish_reason != "stop"` | 视为截断，通过 WS 推送 `error`（可恢复，重试） |
+| API 返回 429 Rate Limit | 等待 `Retry-After` 头或指数退避（1s → 2s → 4s），最多 3 次重试 |
+| API 返回 503 Service Unavailable | 等待 2s 后重试 1 次，仍失败则推送 `error`（recoverable） |
+| API 返回 4xx（非 429） | 不重试，通过 WS 推送 `error`（不可恢复，停止讨论） |
+| API 返回 5xx（非 503） | 重试 1 次，仍失败则推送 `error`（不可恢复，停止讨论） |
+| `finish_reason != "stop"` | 视为截断，通过 WS 推送 `error`（可恢复，重试 1 次） |
+
+[→ S-03 修复：增加 429/503 及指数退避]
 
 ---
 
@@ -107,16 +122,35 @@ POST https://api.deepseek.com/v1/chat/completions
 ```python
 PANELIST_COLORS = [
     "#FF6B6B",  # 珊瑚红
-    "#4ECDC4",  # 青绿
+    "#4ECDC4",  # 青绿（主持人专用）
     "#45B7D1",  # 天蓝
     "#96CEB4",  # 薄荷绿
     "#FFEAA7",  # 暖黄
     "#DDA0DD",  # 梅紫
     "#98D8C8",  # 浅绿松石
     "#F7DC6F",  # 金盏黄
+    "#E17055",  # 陶土橙
+    "#6C5CE7",  # 薰衣草紫
 ]
-# 主持人固定使用 #4ECDC4（青绿），专家按序分配其余颜色
+# 主持人固定使用 #4ECDC4（青绿），专家按序从剩余颜色中分配
+# 10 色色板 = 1 主持 + 最多 8 专家 + 1 冗余 [→ B-01 修复]
 ```
+
+### 3.6 色板分配算法
+
+```python
+HOST_COLOR = "#4ECDC4"
+
+def assign_colors(host: Panelist, experts: list[Panelist]) -> None:
+    """前端/后端分配颜色后写入 DB"""
+    host.color = HOST_COLOR
+    # 从色板中排除主持人色，构建专家可用颜色池
+    expert_colors = [c for c in PANELIST_COLORS if c != HOST_COLOR]
+    for i, expert in enumerate(experts):
+        expert.color = expert_colors[i % len(expert_colors)]
+```
+
+> 注：`expert_colors` 池当前为 9 色，足以覆盖最大 8 位专家。`i % len(expert_colors)` 为极端情况（未来扩展）提供兜底。 [→ m-11 修复]
 
 ---
 
@@ -141,13 +175,7 @@ PANELIST_COLORS = [
    
 4. **开场**：如果这是第 1 轮，主持人进行开场白，介绍话题和嘉宾阵容。
 
-5. **节奏控制**：
-   - 前 3 轮优先让不同专家发表初始观点
-   - 中段鼓励观点碰撞（补充/反驳）
-   - 后段推动共识形成
-   - 整个讨论控制在 10-20 轮为宜（由用户手动结束，但你应当感知讨论充分度并在适当时机让主持人暗示"是否需要总结"）
-
-输出格式：严格的 JSON，只输出一个回合的发言和状态更新：
+5. **输出格式**：严格的 JSON，只输出一个回合的发言和状态更新：
 {
   "speaker_id": "发言人的 panelist UUID",
   "content": "发言内容，1-2 句",
@@ -236,35 +264,60 @@ async def discussion_engine(discussion_id: str, ws_manager: WebSocketManager):
     round_num = 1
     stop_signal = asyncio.Event()
 
-    while not stop_signal.is_set():
-        # 构建 prompt
-        prompt = build_turn_prompt(disc, panelists, messages, round_num)
+    # 推送讨论开始事件 [→ m-02 修复]
+    await ws_manager.broadcast(discussion_id, "discussion_started", {
+        "topic": disc.topic,
+        "panelist_count": len(panelists),
+    })
 
-        # 调用 DeepSeek
-        response = await call_deepseek(prompt, temperature=0.7)
+    try:
+        while not stop_signal.is_set():
+            # 构建 prompt
+            prompt = build_turn_prompt(disc, panelists, messages, round_num)
 
-        # 解析 JSON
-        turn = parse_turn_response(response)
+            # 调用 DeepSeek
+            response = await call_deepseek(prompt, temperature=0.7)
 
-        # 存入 Message
-        message = await save_message(discussion_id, turn)
+            # 解析 + 校验 JSON（见 05-validation-layer.md）
+            turn = parse_and_validate_turn(response, panelist_map)
 
-        # 更新 Panelist 状态
-        await update_panelist_statuses(turn.panelist_statuses)
+            # 更新 Panelist 状态（先推状态再推消息）[→ m-07 修复]
+            await update_panelist_statuses(turn.panelist_statuses)
+            await ws_manager.broadcast(discussion_id, "panelist_status", {
+                "panelists": turn.panelist_statuses
+            })
 
-        # 通过 WS 推送
-        await ws_manager.broadcast(discussion_id, "new_message", message)
-        await ws_manager.broadcast(discussion_id, "panelist_status", turn.panelist_statuses)
+            # 存入 Message
+            message = await save_message(discussion_id, turn)
 
-        # 每 3-5 次发言触发共识提炼
-        if len(messages) > 0 and len(messages) % random.randint(3, 5) == 0:
-            await extract_consensus(discussion_id, messages[-5:], ws_manager)
+            # 推消息
+            await ws_manager.broadcast(discussion_id, "new_message", message)
 
-        messages.append(message)
-        round_num += 1
+            messages.append(message)
+            round_num += 1
 
-        # 短暂延迟，营造实时感
-        await asyncio.sleep(1.5)
+            # 更新 Discussion.updated_at 检查点 [→ M-06 修复]
+            await touch_discussion(discussion_id)
+
+            # 每 3-5 次发言触发共识提炼 [→ m-04 修复]
+            if message.sequence % consensus_interval == 0:
+                await extract_consensus(discussion_id, messages[-5:], ws_manager)
+                consensus_interval = random.randint(3, 5)  # 设定下一次目标间隔
+
+            # 短暂延迟，营造实时感
+            await asyncio.sleep(1.5)
+    finally:
+        # 停止信号后的总结生成 [→ M-02 修复]
+        if stop_signal.is_set():
+            summary = await generate_host_summary(discussion_id, messages)
+            # 总结写入 Transcript（SUMMARY 类型 Message）
+            summary_msg = await save_summary_message(discussion_id, panelist_map, summary)
+            # 推送总结事件
+            await ws_manager.broadcast(discussion_id, "discussion_ended", {
+                "summary": summary,
+                "total_messages": len(messages) + 1,
+            })
+        await mark_discussion_ended(discussion_id)
 ```
 
 ---
@@ -315,7 +368,9 @@ async def discussion_engine(discussion_id: str, ws_manager: WebSocketManager):
 
 ### 5.4 输出处理
 
-- 对 `points` 中的每一条，与已有 ConsensusPoint 做语义去重（可用简单关键词重叠判重）
+- 对 `points` 中的每一条，与已有 ConsensusPoint 做语义去重：
+  - 使用 **Jaccard 相似度**（基于分词后的关键词集合）：`J(A, B) = |A ∩ B| / |A ∪ B|`
+  - 阈值：`J ≥ 0.6` 视为重复，跳过不写入 [→ S-04 修复]
 - 新条目写入数据库，设置 `message_range_start` 和 `message_range_end`
 - 通过 WS 推送 `consensus_update`（全量替换，包含历史 + 新增）
 
@@ -358,6 +413,7 @@ async def discussion_engine(discussion_id: str, ws_manager: WebSocketManager):
 
 ### 6.4 输出处理
 
+- 将总结纯文本作为一条 `message_type=SUMMARY` 的 Message 写入数据库（`speaker=HOST`，`sequence` 接续当前最大序号）[→ M-01 修复]
 - 返回纯文本给 REST 端点 `POST /api/discussions/{id}/end`
 - 同时通过 WS 推送 `discussion_ended` 事件（含总结文本）
 - 讨论状态置为 `ENDED`
@@ -376,9 +432,6 @@ async def discussion_engine(discussion_id: str, ws_manager: WebSocketManager):
 ```text
 你是一位资深的圆桌讨论策划人。有一位专家需要被替换，请生成一个新的替代专家。
 
-已有的嘉宾阵容：
-{existing_panelists_text}
-
 要求：
 1. 新专家的职业、立场不能与已有嘉宾重复
 2. 立场应与至少一位已有专家形成对立或互补
@@ -392,6 +445,27 @@ async def discussion_engine(discussion_id: str, ws_manager: WebSocketManager):
   "title": "头衔",
   "stance": "立场"
 }
+```
+
+### 7.3 User Message [→ m-06 修复]
+
+```text
+话题：{topic}
+
+## 已有嘉宾阵容
+
+{existing_panelists_text}
+<!-- 格式：
+- 主持人：{name}（{profession}，{stance}）
+- 专家 1：{name}（{profession}，{stance}）
+...
+-->
+
+## 被替换专家
+
+{replaced_panelist_name} — {replaced_panelist_profession}，立场：{replaced_panelist_stance}
+
+请生成一位立场不同的替代专家。
 ```
 
 ---

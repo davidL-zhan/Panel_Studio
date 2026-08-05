@@ -32,13 +32,13 @@
 stateDiagram-v2
     [*] --> PENDING_PANEL: 用户创建讨论
     PENDING_PANEL --> PANEL_READY: LLM 生成嘉宾完成
-    PANEL_READY --> PENDING_PANEL: 用户替换专家（重新生成部分）*
+    PANEL_READY --> PENDING_PANEL: 用户请求全部重新生成嘉宾（POST /regenerate）*
     PANEL_READY --> IN_PROGRESS: 用户确认并开始
     IN_PROGRESS --> ENDED: 用户点击"结束讨论"
     ENDED --> [*]
 ```
 
-> *注：替换单个专家不触发状态回退，仅当全部重新生成时才回到 `PENDING_PANEL`。
+> *注：替换单个专家（PUT）不触发状态回退，保持 `PANEL_READY`。全部重新生成通过 `POST /api/discussions/{id}/panel/regenerate` 端点触发，状态回退至 `PENDING_PANEL`。 [→ M-09 修复]
 
 ---
 
@@ -78,10 +78,13 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     STANDBY --> PREPARING: 主持人点名 / 自主举手
+    STANDBY --> SPEAKING: 主持人开场/点名自己（仅 HOST）
     PREPARING --> SPEAKING: 开始发言
     PREPARING --> STANDBY: 主持人未选中
     SPEAKING --> STANDBY: 发言结束
 ```
+
+> 注：`STANDBY → SPEAKING` 为 HOST 专属直通路径，用于主持人开场和主持人点名自己发言的场景。EXPERT 必须经过 PREPARING。 [→ M-10 修复]
 
 ---
 
@@ -107,7 +110,9 @@ stateDiagram-v2
 | `SUPPLEMENT` | 补充观点 | 专家 |
 | `REBUTTAL` | 反驳 | 专家 |
 | `TRANSITION` | 串联/过渡 | 主持人 |
-| `SUMMARY` | 总结 | 主持人 |
+| `SUMMARY` | 总结（讨论结束时的自然语言总结） | 主持人 |
+
+> **API 视图衍生字段：** Transcript API 响应中额外包含 `panelist_name`、`panelist_title`、`panelist_color` 三个字段，通过 JOIN Panelist 表填充，不属于 Message 实体存储字段。 [→ m-01 修复]
 
 ---
 
@@ -184,6 +189,17 @@ erDiagram
         datetime generated_at
     }
 ```
+
+**关系基数说明：**
+
+| 关系 | 基数 | 说明 |
+|------|------|------|
+| Discussion → Panelist | `1 : (1 + expert_count)` | 1 主持 + N 专家，N ∈ [4, 8] |
+| Discussion → Message | `1 : 0..*` | 讨论创建时无消息 |
+| Discussion → ConsensusPoint | `1 : 0..*` | 首次提炼前为空 |
+| Message → Panelist | `N : 1` | 每条发言属于一个发言人 |
+
+[→ S-06 修复]
 
 ---
 
