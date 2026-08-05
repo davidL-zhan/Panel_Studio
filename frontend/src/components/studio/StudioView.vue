@@ -60,15 +60,22 @@ function handleWsEvent(envelope: WsEnvelope) {
   wsStore.lastSequenceId = envelope.sequence_id
   const data = envelope.data
 
+  if (import.meta.env.DEV) {
+    console.debug('[WS]', envelope.event, envelope.sequence_id)
+  }
+
   switch (envelope.event) {
     case 'initial_state': {
       const d = data as WsInitialState
-      // 用 WS 初始状态覆盖（比 REST 加载的数据更新）
-      if (d.panelists?.length) discussionStore.panelists = d.panelists
-      if (d.latest_messages?.length) discussionStore.messages = d.latest_messages
-      if (d.consensus_points) discussionStore.consensusPoints = d.consensus_points
+      if (d.latest_messages?.length) {
+        discussionStore.messages = d.latest_messages
+        currentMessage.value = d.latest_messages.at(-1) ?? null
+      }
       break
     }
+    case 'discussion_started':
+      // engine confirmed running
+      break
     case 'panelist_status':
       discussionStore.handlePanelistStatus(data as WsPanelistStatus)
       break
@@ -101,6 +108,13 @@ defineExpose({
 
 <template>
   <div class="studio-view">
+    <!-- WS 连接状态 -->
+    <div v-if="!IS_MOCK && wsStore.status !== WsConnectionStatus.CONNECTED" class="ws-banner" :class="wsStore.status">
+      <span v-if="wsStore.status === WsConnectionStatus.CONNECTING">正在连接...</span>
+      <span v-else-if="wsStore.status === WsConnectionStatus.RECONNECTING">连接断开，重连中...</span>
+      <span v-else>连接失败，请刷新页面</span>
+    </div>
+
     <StageArea :host="discussionStore.host" :experts="discussionStore.experts" />
 
     <div role="status" aria-live="polite" aria-atomic="true">
@@ -129,6 +143,13 @@ defineExpose({
 
 <style scoped>
 .studio-view { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.ws-banner {
+  text-align: center; padding: var(--space-xs) var(--space-md); font-size: var(--text-xs);
+  background: var(--bg-surface-2); flex-shrink: 0;
+}
+.ws-banner.connecting,
+.ws-banner.reconnecting { color: var(--color-warning); }
+.ws-banner.disconnected { color: var(--color-error); }
 .dual-panel {
   display: grid; grid-template-columns: 35fr 65fr; gap: var(--space-md);
   flex: 1; min-height: 0; padding: 0 var(--space-lg) var(--space-md);

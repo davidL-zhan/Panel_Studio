@@ -1,6 +1,6 @@
 """SDD §03-database-schema — SQLAlchemy 模型 + 异步引擎"""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import (
     Column, String, Integer, Text, DateTime, ForeignKey,
     CheckConstraint, UniqueConstraint, event,
@@ -18,8 +18,10 @@ def gen_uuid() -> str:
     return str(uuid.uuid4())
 
 
+BEIJING_TZ = timezone(timedelta(hours=8))
+
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(BEIJING_TZ)
 
 
 # ═══ ORM Models ═══════════════════════════════════════
