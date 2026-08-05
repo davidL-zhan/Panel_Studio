@@ -70,13 +70,15 @@ async function handleReplace(panelistId: string) {
       />
     </div>
 
-    <!-- 操作按钮 -->
-    <PanelActions
-      :starting="starting"
-      :regenerating="regenerating"
-      @start="handleStart"
-      @regenerate="handleRegenerate"
-    />
+    <!-- 操作按钮（吸底） -->
+    <div class="actions-sticky">
+      <PanelActions
+        :starting="starting"
+        :regenerating="regenerating"
+        @start="handleStart"
+        @regenerate="handleRegenerate"
+      />
+    </div>
   </div>
 </template>
 
@@ -84,20 +86,31 @@ async function handleReplace(panelistId: string) {
 .panel-ready-view {
   max-width: 960px;
   margin: 0 auto;
-  padding: var(--space-xl) var(--space-lg);
+  padding: var(--space-lg) var(--space-lg) 0;
+  overflow-y: auto;
+  height: 100%;
 }
 .topic-title {
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   font-weight: var(--font-semibold);
   text-align: center;
-  margin-bottom: var(--space-xl);
+  margin-bottom: var(--space-md);
 }
 .host-section {
   display: flex;
   justify-content: center;
-  margin-bottom: var(--space-xl);
+  margin-bottom: var(--space-md);
 }
 .experts-section {
   margin-bottom: var(--space-md);
+}
+/* 操作按钮吸底 */
+.actions-sticky {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-root);
+  padding: var(--space-md) 0;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: var(--space-md);
 }
 </style>
